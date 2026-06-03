@@ -29,7 +29,7 @@ Supergirl Arcade: Un frenético juego web retro 2D. Vuela, usa tu visión láser
 
 ### Propiedad Intelectual y Personajes
 - **Supergirl / Kara Zor-El:** El personaje, los logotipos y los elementos del universo son propiedad exclusiva de DC Comics y Warner Bros. Discovery.
-- **Inspiración Cinematográfica:** Este proyecto rinde homenaje a la futura película *Supergirl: Woman of Tomorrow* (2026), reconociendo la visión de James Gunn en DC Studios y la imagen e interpretación de la actriz Milly Alcock.
+- **Inspiración Cinematográfica:** Este proyecto rinde homenaje a la futura película *Supergirl* (2026), reconociendo la visión de James Gunn en DC Studios y la imagen e interpretación de la actriz Milly Alcock.
 
 ### Banda Sonora y Música
 - **Composición Original:** "Call Me", escrita e interpretada originalmente por la banda Blondie (Debbie Harry y Giorgio Moroder). Todos los derechos musicales y de publicación pertenecen a los autores originales y sus respectivas discográficas.
