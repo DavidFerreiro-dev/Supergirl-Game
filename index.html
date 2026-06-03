@@ -1,0 +1,2186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Supergirl Arcade</title>
+    <link rel="icon" href="media/favicon.png" type="image/png">
+    <style>
+        /* Ocultar cursor en los elementos superpuestos del juego */
+        .game-container canvas, .game-container .crt-overlay, .game-container #coins-container {
+            cursor: none !important;
+        }
+
+        /* Evitar que se arrastren las imágenes o se seleccione texto por error al hacer clics rápidos */
+        img, .ability-btn, .cooldown-wheel, body {
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        img {
+            pointer-events: none;
+        }
+
+        body {
+            /* Efecto retro de scanlines en el fondo */
+            background: repeating-linear-gradient(
+                0deg,
+                #111,
+                #111 2px,
+                #000 2px,
+                #000 4px
+            );
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: "Courier New", Courier, monospace;
+            flex-direction: column;
+            overscroll-behavior: none; /* Previene el refresco o rebote al deslizar en móvil */
+            touch-action: none;
+        }
+
+        .menu-container, .game-container {
+            background-color: #2b2b2b;
+            /* La misma resolución reducida que el juego */
+            width: 800px;
+            height: 600px;
+            border: 6px solid #888;
+            border-bottom-color: #333;
+            border-right-color: #333;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            box-sizing: border-box;
+            /* Para que los bordes de la imagen no sobresalgan y mantenga el estilo retro */
+            image-rendering: pixelated;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 0 15px rgba(0,0,0,1);
+        }
+
+        .menu-container {
+            padding: 20px;
+        }
+
+        .game-container {
+            display: none; /* Oculto por defecto, se muestra por JS */
+            position: relative;
+            margin: 0 auto;
+            height: 75vh;
+            max-height: 750px;
+            aspect-ratio: 4 / 3;
+            max-width: 100vw;
+        }
+
+        /* Definimos la resolución nativa retro, pero la escalamos con CSS */
+        canvas {
+            image-rendering: pixelated;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #hudCanvas {
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .ability-sidebar {
+            position: absolute;
+            left: -120px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            z-index: 100;
+        }
+        
+
+        .ability-btn {
+            width: 100px;
+            height: 100px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: transform 0.1s, filter 0.2s;
+        }
+        
+        .ability-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .ability-btn.active {
+            filter: drop-shadow(0 0 15px yellow);
+        }
+
+        .ability-btn.mode-follow {
+            box-shadow: 0 0 10px rgba(120, 200, 255, 0.8);
+        }
+
+        .ability-btn.mode-coins {
+            box-shadow: 0 0 10px rgba(255, 215, 80, 0.9);
+        }
+
+        .crt-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50; /* Por encima del canvas y las monedas, pero debajo de la pausa */
+            /* Efecto viñeta */
+            background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.5) 100%);
+            /* Sombra interior gruesa para dar sensacion de pantalla curvada de tubo */
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.8), inset 0 0 80px rgba(0,0,0,0.6);
+        }
+
+        .logo {
+            max-width: 200px;
+            margin-bottom: 30px;
+            filter: drop-shadow(4px 4px 0 #000);
+        }
+
+        .menu-btn {
+            background-color: #ff2a2a;
+            color: white;
+            border: 4px solid white;
+            padding: 15px 30px;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 15px 0;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            width: 250px;
+            font-family: inherit;
+            text-shadow: 2px 2px 0 #000;
+            box-shadow: 4px 4px 0 #000;
+            transition: transform 0.1s, background-color 0.2s, box-shadow 0.1s;
+        }
+
+        /* Clase para el botón seleccionado mediante teclado */
+        .menu-btn.selected {
+            background-color: #ff5555;
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0 #fff; /* Borde blanco brillante para resaltar */
+            border-color: yellow;
+            color: yellow;
+        }
+
+        /* Opciones como un modal retro - position fixed para funcionar en menu Y en pausa */
+        .options-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #1a1a1a;
+            padding: 30px;
+            border: 4px solid white;
+            box-shadow: 8px 8px 0 #000;
+            text-align: center;
+            width: 300px;
+            display: none;
+            z-index: 1000;
+        }
+
+        .options-panel h3 {
+            margin-top: 0;
+            color: yellow;
+            font-size: 24px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .slider-container {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        input[type=range] {
+            width: 100%;
+            margin-top: 15px;
+        }
+        
+        .close-btn {
+            background-color: #444;
+            color: white;
+            border: 2px solid white;
+            padding: 5px 15px;
+            margin-top: 20px;
+            font-family: inherit;
+            font-weight: bold;
+            box-shadow: 2px 2px 0 #000;
+        }
+        
+        .close-btn.selected {
+            background-color: #666;
+            border-color: yellow;
+            color: yellow;
+        }
+
+        /* Menú de pausa */
+        .pause-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 10;
+            box-sizing: border-box;
+            display: none; /* Oculto por defecto */
+        }
+
+        .pause-menu h2 {
+            font-size: 40px;
+            color: yellow;
+            margin-bottom: 40px;
+            margin-top: 0;
+            text-shadow: 4px 4px 0 #000;
+        }
+
+        /* Pie de página con los controles */
+        .controls-footer {
+            margin-top: 20px;
+            color: #ccc;
+            font-size: 16px;
+            text-shadow: 1px 1px 0 #000;
+        }
+        .controls-footer span {
+            color: yellow;
+            font-weight: bold;
+        }
+
+        /* --- ADAPTACIÓN A PANTALLA COMPLETA EN MÓVILES --- */
+        @media (hover: none) and (pointer: coarse) {
+            body {
+                background: #111; /* Fondo sólido en móvil para evitar lag por el gradiente CRT */
+            }
+            
+            /* Ocultar logo exterior de PC para que el menú ocupe el 100% de la pantalla */
+            body > img[alt="Supergirl Logo"] {
+                display: none;
+            }
+
+            .menu-container, .game-container {
+                width: 100vw;
+                height: 100vh;
+                max-width: 100vw;
+                max-height: 100vh;
+                border: none;
+                border-radius: 0;
+                padding: 0;
+            }
+
+            /* Reubicar las habilidades que antes estaban fuera de la caja */
+            .ability-sidebar {
+                left: 20px;
+                top: 20px;
+                transform: none;
+                flex-direction: row;
+                gap: 15px;
+            }
+
+            .ability-btn {
+                width: 50px;
+                height: 50px;
+                background-color: rgba(0,0,0,0.6) !important;
+                border: 2px solid rgba(255,255,255,0.3);
+            }
+
+            .controls-footer { display: none; }
+        }
+
+        /* Pantalla de bloqueo de orientación (Forzar Landscape) */
+        .landscape-warning {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #000;
+            color: yellow;
+            z-index: 99999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        /* Mostrar el aviso si el usuario coge el teléfono en vertical */
+        @media (hover: none) and (pointer: coarse) and (orientation: portrait) {
+            .landscape-warning { display: flex; }
+            .menu-container, .game-container, .mobile-controls { display: none !important; }
+        }
+
+        /* --- CONTROLES MÓVILES ESTILO ARCADE --- */
+        .mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 40px;
+            left: 0;
+            width: 100vw;
+            padding: 0 40px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            align-items: flex-end;
+            z-index: 2000;
+            pointer-events: none;
+        }
+
+        /* Mostrar controles móviles si el dispositivo tiene pantalla táctil */
+        @media (hover: none) and (pointer: coarse) {
+            .mobile-controls { display: flex; }
+        }
+
+        .joystick-base {
+            width: 130px;
+            height: 130px;
+            background: rgba(40, 40, 40, 0.5);
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            position: relative;
+            pointer-events: auto;
+            touch-action: none;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .joystick-knob {
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle at 30% 30%, #ff5555, #cc0000);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 4px 4px 10px rgba(0,0,0,0.5), inset -2px -2px 10px rgba(0,0,0,0.4);
+        }
+
+        .action-button {
+            width: 90px;
+            height: 90px;
+            background: radial-gradient(circle at 30% 30%, #ff5555, #cc0000);
+            border: 4px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 28px;
+            text-shadow: 2px 2px 0 #000;
+            box-shadow: 4px 4px 10px rgba(0,0,0,0.5), inset -2px -2px 10px rgba(0,0,0,0.4);
+            transition: transform 0.05s;
+        }
+        
+        .action-button:active {
+            background: radial-gradient(circle at 30% 30%, #ff8888, #ee0000);
+            transform: scale(0.92);
+        }
+
+        /* Si el dispositivo es apaisado pero tiene poca altura (ej. teléfonos muy alargados), escalar controles un poco */
+        @media (max-height: 450px) {
+            .joystick-base { width: 100px; height: 100px; }
+            .joystick-knob { width: 45px; height: 45px; }
+            .action-button { width: 75px; height: 75px; font-size: 24px; }
+            .mobile-controls { bottom: 10px; padding: 0 20px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Pantalla de bloqueo de orientación táctil -->
+    <div id="landscapeWarning" class="landscape-warning">
+        <span style="font-size: 60px; margin-bottom: 20px;">📱⤾</span>
+        GIRA EL MÓVIL<br>PARA JUGAR EN HORIZONTAL
+    </div>
+
+    <audio id="bgMusic" src="media/music.mp3" loop preload="auto"></audio>
+    <audio id="coinAudio" src="media/coin.mp3" preload="auto"></audio>
+    <audio id="shootAudio" src="media/shoot.mp3" preload="auto"></audio>
+    <audio id="coldAudio" src="media/cold.mp3" preload="auto"></audio>
+    <audio id="selectAudio" src="media/select.mp3" preload="auto"></audio>
+    <audio id="whistleAudio" src="media/silbar.mp3" preload="auto"></audio>
+
+    <img src="media/logo2.png" alt="Supergirl Logo" style="max-width: 400px; margin-bottom: 20px; filter: drop-shadow(4px 4px 0 #000);">
+    <div class="menu-container" id="menuContainer">
+        <!-- Logo del juego más pequeño -->
+        <img src="media/logo.png" alt="Logo Supergirl" class="logo">
+        
+        <!-- Botones (se navegará con flechas) -->
+        <button id="btnJugar" class="menu-btn selectable">JUGAR</button>
+        <button id="btnOpciones" class="menu-btn selectable">OPCIONES</button>
+        <button id="btnCreditos" class="menu-btn selectable">CRÉDITOS</button>
+        <button id="btnSupergirl" class="menu-btn selectable">SUPERGIRL</button>
+
+        <!-- panelOpciones MOVIDO FUERA - ver más abajo -->
+
+        <!-- Créditos (Modal) -->
+        <div class="options-panel" id="panelCreditos" style="width: 700px; height: 500px; overflow-y: auto;">
+            <h3>CRÉDITOS Y COPYRIGHT</h3>
+            <div style="font-size: 14px; text-align: left; padding: 10px; line-height: 1.4;">
+                <p style="text-align: center; color: yellow; font-size: 16px;">
+                    Desarrollado por: <strong>Deybidd (David Ferreiro)</strong><br>
+                    davidjoseferreiro@gmail.com | <a href="https://github.com/DavidFerreiro-dev" target="_blank" style="color: #00ffff;">GitHub</a>
+                </p>
+                
+                <h4 style="color: yellow; border-bottom: 2px solid white; padding-bottom: 5px; margin-top: 20px;">PROPIEDAD INTELECTUAL Y PERSONAJES</h4>
+                <p><strong>Supergirl / Kara Zor-El:</strong> Personaje, logotipos y elementos del universo son propiedad exclusiva de DC Comics y Warner Bros. Discovery.</p>
+                <p><strong>Inspiración Cinematográfica:</strong> Este proyecto rinde homenaje a la película Supergirl (2026), reconociendo la dirección ejecutiva y visión de James Gunn en DC Studios, y la imagen/interpretación de la actriz Milly Alcock.</p>
+
+                <h4 style="color: yellow; border-bottom: 2px solid white; padding-bottom: 5px; margin-top: 20px;">BANDA SONORA Y MÚSICA</h4>
+                <p><strong>Composición Original:</strong> "Call Me" escrita e interpretada originalmente por la banda Blondie (Debbie Harry y Giorgio Moroder). Todos los derechos musicales y de publicación pertenecen a los autores originales y sus discográficas.</p>
+                <p><strong>Arreglo Musical (Chiptune):</strong> Versión instrumental en 8-bits creada y provista por 8 Bit Universe. Usada bajo los principios de uso justo / atribución para este proyecto no comercial.</p>
+
+                <h4 style="color: yellow; border-bottom: 2px solid white; padding-bottom: 5px; margin-top: 20px;">ARTE Y DESARROLLO</h4>
+                <p><strong>Generación de Assets (Sprites y Entornos):</strong> Elementos gráficos de píxeles generados con la asistencia de la inteligencia artificial Grok AI.</p>
+                <p><strong>Código y Ensamblaje:</strong> Desarrollado en HTML5/JavaScript.</p>
+            </div>
+            <button id="btnCerrarCreditos" class="close-btn selectable-options selected">CERRAR</button>
+        </div>
+    </div>
+
+    <!-- Opciones flotante global (funciona en menú Y en pausa/juego) -->
+    <div class="options-panel" id="panelOpciones">
+        <h3>OPCIONES</h3>
+        <div class="slider-container">
+            <label for="volume">VOLUMEN PRINCIPAL</label>
+            <input type="range" id="volume" name="volume" min="0" max="100" value="20">
+        </div>
+        <div class="slider-container" style="margin-top:20px;">
+            <label style="color:yellow;">CONTROLES</label>
+            <button id="btnControles" class="close-btn" style="margin-top:10px; width:100%; background:#333; border-color:#aaa;">REMAPEAR TECLAS</button>
+        </div>
+        <button id="btnCerrarOpciones" class="close-btn selectable-options">CERRAR</button>
+    </div>
+
+    <!-- Panel de remapeo global (funciona en menú Y en pausa/juego) -->
+    <div class="options-panel" id="panelControles" style="width:480px; max-height:520px; overflow-y:auto; display:none; z-index:1100;">
+        <h3>CONTROLES</h3>
+        <p style="font-size:12px; color:#aaa;">Haz clic en un botón y pulsa la tecla deseada</p>
+        <table id="controlsTable" style="width:100%; border-collapse:collapse; font-size:14px;"></table>
+        <div style="margin-top:15px; display:flex; gap:10px; justify-content:center;">
+            <button id="btnResetControles" class="close-btn">RESETEAR</button>
+            <button id="btnCerrarControles" class="close-btn">CERRAR</button>
+        </div>
+    </div>
+
+    <div class="game-container" id="gameContainer">
+        <!-- Sidebar de habilidades -->
+        <div class="ability-sidebar">
+            <div id="btnAbilityLaser" class="ability-btn active" style="background-image: url('media/fireIcon.png'); background-size: cover; background-color: transparent;" title="Visión Térmica"></div>
+            <div id="btnAbilityCold" class="ability-btn" style="background-image: url('media/coldIcon.png'); background-size: cover; background-color: transparent;" title="Aliento Gélido"></div>
+            <div id="btnAbilityKrypto" class="ability-btn" style="background-image: url('media/kryptoIcon.png'); background-size: cover; background-color: transparent;" title="Llamar a Krypto"></div>
+        </div>
+
+        <canvas id="gameCanvas" width="400" height="300"></canvas>
+        
+        <!-- Contenedor overlay para reproducir el GIF animado de las monedas -->
+        <div id="coins-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 10;"></div>
+
+        <!-- Overlay CRT/Viñeta (Por debajo del HUD) -->
+        <div class="crt-overlay"></div>
+        
+        <!-- HUD Canvas (Siempre por encima del CRT) -->
+        <canvas id="hudCanvas" width="400" height="300"></canvas>
+
+        <div id="pauseMenu" class="pause-menu">
+            <h2>PAUSA</h2>
+            <button id="btnContinuar" class="menu-btn pause-selectable">CONTINUAR</button>
+            <button id="btnOpcionesPausa" class="menu-btn pause-selectable">OPCIONES</button>
+            <button id="btnVolver" class="menu-btn pause-selectable">VOLVER AL MENÚ</button>
+        </div>
+    </div>
+
+    <div class="controls-footer">
+        <span>(<span id="lblKeysMove">↑ ↓ ← →</span>)</span> Mover/Navegar | <span>(<span id="lblKeyShoot">Z</span>)</span> Seleccionar/Disparar | <span>(<span id="lblKeyPause">X</span>)</span> Cancelar/Volver/Pausar
+    </div>
+
+    <!-- Botones táctiles de overlay (Ocultos en PC, visibles en Móvil) -->
+    <div id="mobileControls" class="mobile-controls">
+        <div id="joystickBase" class="joystick-base">
+            <div id="joystickKnob" class="joystick-knob"></div>
+        </div>
+        <div id="mobileActionBtn" class="action-button">A</div>
+    </div>
+
+    <script>
+        const bgMusic = document.getElementById('bgMusic');
+        const coinAudio = document.getElementById('coinAudio');
+        const sliderVolume = document.getElementById('volume');
+        const menuContainer = document.getElementById('menuContainer');
+        const gameContainer = document.getElementById('gameContainer');
+        const panelOpciones = document.getElementById('panelOpciones');
+        const panelCreditos = document.getElementById('panelCreditos');
+        const pauseMenu = document.getElementById('pauseMenu');
+        
+        let musicStarted = false;
+        let gameState = 'MENU'; // Posibles: MENU, OPTIONS, CREDITS, GAME, PAUSE, CONTROLS
+
+        // --- SISTEMA DE CONTROLES REMAPEABLES ---
+        const defaultKeyMap = {
+            up:     'ArrowUp',
+            down:   'ArrowDown',
+            left:   'ArrowLeft',
+            right:  'ArrowRight',
+            shoot:  'KeyZ',
+            cold:   'KeyC',
+            pause:  'KeyX',
+            whistle:'KeyF'
+        };
+        const actionLabels = {
+            up:    'Mover Arriba',
+            down:  'Mover Abajo',
+            left:  'Mover Izquierda',
+            right: 'Mover Derecha',
+            shoot: 'Disparar / Confirmar',
+            cold:  'Aliento Gélido',
+            pause: 'Pausar / Cancelar',
+            whistle: 'Silbar a Krypto'
+        };
+        // Cargar keyMap desde localStorage y hacer merge con default para asegurar que las nuevas teclas (ej: cold) existan
+        let savedMap = JSON.parse(localStorage.getItem('sg_keyMap') || 'null');
+        let keyMap = Object.assign(Object.assign({}, defaultKeyMap), savedMap || {});
+
+        function codeToLabel(code) {
+            return code
+                .replace('Arrow', '')
+                .replace('Key', '')
+                .replace('Digit', '')
+                .replace('Numpad', 'Num');
+        }
+
+        function codeToSymbol(code) {
+            const symbols = {
+                'ArrowUp': '↑',
+                'ArrowDown': '↓',
+                'ArrowLeft': '←',
+                'ArrowRight': '→'
+            };
+            return symbols[code] || codeToLabel(code);
+        }
+
+        function updateFooterControls() {
+            const lblMove = document.getElementById('lblKeysMove');
+            const lblShoot = document.getElementById('lblKeyShoot');
+            const lblPause = document.getElementById('lblKeyPause');
+            if (lblMove) lblMove.textContent = `${codeToSymbol(keyMap.up)} ${codeToSymbol(keyMap.down)} ${codeToSymbol(keyMap.left)} ${codeToSymbol(keyMap.right)}`;
+            if (lblShoot) lblShoot.textContent = codeToSymbol(keyMap.shoot);
+            if (lblPause) lblPause.textContent = codeToSymbol(keyMap.pause);
+        }
+
+        // Llamar inicialmente
+        updateFooterControls();
+
+        function saveKeyMap() {
+            localStorage.setItem('sg_keyMap', JSON.stringify(keyMap));
+            updateFooterControls();
+        }
+
+        let remappingAction = null;
+        const panelControles = document.getElementById('panelControles');
+        const controlsTable = document.getElementById('controlsTable');
+
+        function buildControlsTable() {
+            controlsTable.innerHTML = '';
+            for (const action in keyMap) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding:8px 6px; color:#ccc; text-align:left;">${actionLabels[action]}</td>
+                    <td style="padding:8px 6px; text-align:right;">
+                        <button id="remap_${action}" class="close-btn" style="min-width:100px; background:#222; border-color:#aaa;">
+                            ${codeToLabel(keyMap[action])}
+                        </button>
+                    </td>
+                `;
+                controlsTable.appendChild(tr);
+                document.getElementById('remap_' + action).addEventListener('click', () => startRemapping(action));
+            }
+        }
+
+        function startRemapping(action) {
+            remappingAction = action;
+            const btn = document.getElementById('remap_' + action);
+            btn.textContent = '...';
+            btn.style.borderColor = 'yellow';
+            btn.style.color = 'yellow';
+        }
+
+        document.getElementById('btnControles').addEventListener('click', () => {
+            panelOpciones.style.display = 'none'; // cerrar opciones antes de abrir controles
+            gameState = 'CONTROLS';
+            buildControlsTable();
+            remappingAction = null;
+            panelControles.style.display = 'block';
+        });
+
+        document.getElementById('btnCerrarControles').addEventListener('click', () => {
+            remappingAction = null;
+            panelControles.style.display = 'none';
+            gameState = 'OPTIONS';
+            panelOpciones.style.display = 'block'; // volver a opciones
+        });
+
+        document.getElementById('btnResetControles').addEventListener('click', () => {
+            keyMap = Object.assign({}, defaultKeyMap);
+            saveKeyMap();
+            buildControlsTable();
+            remappingAction = null;
+        });
+
+        // Captura de tecla para remapeo
+        window.addEventListener('keydown', (e) => {
+            if (remappingAction) {
+                e.preventDefault();
+                keyMap[remappingAction] = e.code;
+                saveKeyMap();
+                remappingAction = null;
+                buildControlsTable();
+                return;
+            }
+        }, true); // capture phase para que tenga prioridad
+
+        // Cerrar opciones con el ratón (el teclado ya lo hace en el keydown handler)
+        document.getElementById('btnCerrarOpciones').addEventListener('click', () => {
+            const prev = window.previousGameState || 'MENU';
+            window.previousGameState = null;
+            gameState = prev;
+            panelOpciones.style.display = 'none';
+            document.getElementById('btnCerrarOpciones').classList.remove('selected');
+            if (prev === 'PAUSE') {
+                pauseMenu.style.display = 'flex';
+            }
+        });
+
+        // Slider de volumen: actualizar con ratón (input) además de con teclado
+        sliderVolume.addEventListener('input', () => {
+            bgMusic.volume = sliderVolume.value / 100;
+        });
+
+        // --- LÓGICA DEL MENÚ PRINCIPAL ---
+        const mainMenuItems = [document.getElementById('btnJugar'), document.getElementById('btnOpciones'), document.getElementById('btnCreditos'), document.getElementById('btnSupergirl')];
+        let mainSelectedIndex = 0;
+
+        function updateMainMenuSelection() {
+            mainMenuItems.forEach((item, index) => {
+                if (index === mainSelectedIndex) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+        updateMainMenuSelection();
+
+        // --- LÓGICA DE PAUSA ---
+        const pauseMenuItems = [document.getElementById('btnContinuar'), document.getElementById('btnOpcionesPausa'), document.getElementById('btnVolver')];
+        let pauseSelectedIndex = 0;
+
+        function updatePauseMenuSelection() {
+            pauseMenuItems.forEach((item, index) => {
+                if (index === pauseSelectedIndex) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+        }
+
+        // --- LÓGICA DEL JUEGO ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const bgImage = new Image();
+        bgImage.src = 'media/background.png';
+        const imgIdle = new Image(); imgIdle.src = 'media/player/idle.png';
+        const imgFly = new Image(); imgFly.src = 'media/player/fly.png';
+        const imgShoot = new Image(); imgShoot.src = 'media/player/shoot.png';
+        const imgCoin = new Image(); imgCoin.src = 'media/coin.gif';
+        const imgKrypto = new Image(); imgKrypto.src = 'media/player/krypto.png';
+        
+        let bgX = 0;
+        let bgY = 0;
+        let currentBgSpeedX = 0;
+        let currentBgSpeedY = 0;
+        let bgMoving = false;
+        let warpMultiplier = 1;
+        let hero = { x: 50, y: 150, vx: 0, vy: 0, width: 80, height: 80, speed: 0.8, facing: 1, shootFrames: 0 };
+        
+        let projectiles = [];
+        let coins = [];
+        let windLines = [];
+        let heroTrail = [];
+        let capeParticles = [];
+        let kryptoParticles = [];
+        let coinDebris = [];      // Partículas de moneda al ser destruida por el calor
+        let coinPickups = [];     // Chispas que viajan hacia la heroina al recoger monedas
+        let popupTexts = [];      // Textos emergentes de puntos bajo el score
+        let coinFlash = 0;
+        let screenShake = 0;
+        let score = 0;
+        let laserCooldown = 0;
+        const laserMaxCooldown = 120; // Cooldown mayor (2 segundos)
+        let coldCooldown = 0;
+        const coldMaxCooldown = 300; // Cooldown mayor para aliento (5 segundos)
+
+        const selectAudio = document.getElementById('selectAudio');
+        let activeAbility = 'laser';
+        let auraFrames = 0;
+        let auraColor = '#ff0000';
+
+        let switchCooldown = 0;
+        const switchMaxCooldown = 900; // 15 segundos
+
+        let kryptoCooldown = 0;
+        const kryptoMaxCooldown = 5400; // 1:30 minutos
+        const METERS_PER_PIXEL = 2;
+        let kryptoMode = 'follow';
+        let kryptoWhistleFlash = 0;
+        let krypto = {
+            active: false,
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            timer: 0,
+            width: 36,
+            height: 36,
+            speed: 3.2,
+            trail: [],
+            orbitAngle: 0,
+            facing: 1,
+            angle: 0,
+            returnTimerFrames: 0,
+            returnSpeed: 500,
+            coinsBoost: 0
+        };
+
+        function spawnCoinPickup(fromX, fromY) {
+            const targetX = hero.x + hero.width / 2;
+            const targetY = hero.y + hero.height / 2;
+            for (let i = 0; i < 6; i++) {
+                coinPickups.push({
+                    x: fromX,
+                    y: fromY,
+                    tx: targetX,
+                    ty: targetY,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    life: 1.0
+                });
+            }
+        }
+
+        function summonKrypto() {
+            if (gameState !== 'GAME') return;
+            if (kryptoCooldown > 0 || krypto.active) return;
+            
+            krypto.active = true;
+            krypto.timer = 3600; // 60 segundos a 60fps
+            kryptoCooldown = kryptoMaxCooldown;
+            krypto.x = hero.x - 30;
+            krypto.y = hero.y + 10;
+            krypto.vx = 0;
+            krypto.vy = 0;
+            krypto.trail = [];
+            krypto.orbitAngle = Math.random() * Math.PI * 2;
+            krypto.facing = hero.facing;
+            krypto.angle = 0;
+            krypto.returnTimerFrames = 0;
+            krypto.coinsBoost = 0;
+            
+            if (selectAudio) {
+                selectAudio.currentTime = 0;
+                selectAudio.play().catch(() => {});
+            }
+        }
+
+        function setAbility(ability) {
+            if (activeAbility === ability) return; // Ya seleccionada
+            if (switchCooldown > 0) return; // Cooldown de cambio en curso
+
+            activeAbility = ability;
+            auraFrames = 30;
+            auraColor = ability === 'laser' ? '#ff0000' : '#0033cc';
+            switchCooldown = switchMaxCooldown;
+            updateAbilityUI();
+            if (selectAudio) {
+                selectAudio.currentTime = 0;
+                selectAudio.play().catch(() => {});
+            }
+        }
+        
+        function updateAbilityUI() {
+            const btnLaser = document.getElementById('btnAbilityLaser');
+            const btnCold = document.getElementById('btnAbilityCold');
+            if (btnLaser && btnCold) {
+                if (activeAbility === 'laser') {
+                    btnLaser.classList.add('active');
+                    btnCold.classList.remove('active');
+                } else {
+                    btnCold.classList.add('active');
+                    btnLaser.classList.remove('active');
+                }
+            }
+        }
+
+        function updateKryptoModeUI() {
+            const btnKrypto = document.getElementById('btnAbilityKrypto');
+            if (!btnKrypto) return;
+            btnKrypto.classList.remove('mode-follow', 'mode-coins');
+            btnKrypto.classList.add(kryptoMode === 'coins' ? 'mode-coins' : 'mode-follow');
+        }
+
+        function toggleKryptoMode() {
+            if (!krypto.active) return;
+            kryptoMode = kryptoMode === 'follow' ? 'coins' : 'follow';
+            kryptoWhistleFlash = 20;
+            if (kryptoMode === 'follow') {
+                const dx = (krypto.x + krypto.width / 2) - (hero.x + hero.width / 2);
+                const dy = (krypto.y + krypto.height / 2) - (hero.y + hero.height / 2);
+                const distMeters = Math.sqrt(dx * dx + dy * dy) * METERS_PER_PIXEL;
+                krypto.returnTimerFrames = Math.ceil((distMeters / krypto.returnSpeed) * 60);
+                krypto.coinsBoost = 0;
+            } else {
+                krypto.coinsBoost = 120;
+                krypto.vx = Math.max(krypto.vx, 4.5);
+                krypto.vy = 0;
+                krypto.facing = 1;
+            }
+            updateKryptoModeUI();
+            const whistleAudio = document.getElementById('whistleAudio');
+            if (whistleAudio) {
+                whistleAudio.currentTime = 0;
+                whistleAudio.play().catch(() => {});
+            }
+        }
+        
+        // Asignar listeners cuando el DOM esté listo o directamente aquí porque los botones ya existen
+        document.getElementById('btnAbilityLaser').addEventListener('click', () => setAbility('laser'));
+        document.getElementById('btnAbilityCold').addEventListener('click', () => setAbility('cold'));
+        document.getElementById('btnAbilityKrypto').addEventListener('click', summonKrypto);
+
+        updateKryptoModeUI();
+
+        const keys = {};
+
+        function startGame() {
+            hero = { x: 50, y: 150, vx: 0, vy: 0, width: 80, height: 80, speed: 0.8, facing: 1, shootFrames: 0 };
+            projectiles = [];
+            document.getElementById('coins-container').innerHTML = '';
+            coins = [];
+            windLines = [];
+            heroTrail = [];
+            capeParticles = [];
+            kryptoParticles = [];
+            coinDebris = [];
+            coinPickups = [];
+            popupTexts = [];
+            coinFlash = 0;
+            screenShake = 0;
+            score = 0;
+            laserCooldown = 0;
+            coldCooldown = 0;
+            switchCooldown = 0;
+            kryptoCooldown = 0;
+            krypto.active = false;
+            kryptoMode = 'follow';
+            kryptoWhistleFlash = 0;
+            krypto.returnTimerFrames = 0;
+            krypto.coinsBoost = 0;
+            updateKryptoModeUI();
+            activeAbility = 'laser';
+            auraFrames = 0;
+            auraColor = '#ff0000';
+            updateAbilityUI();
+            bgX = 0; bgY = 0;
+            currentBgSpeedX = 0; currentBgSpeedY = 0;
+            bgMoving = false;
+            warpMultiplier = 1;
+            gameState = 'GAME';
+            menuContainer.style.display = 'none';
+            gameContainer.style.display = 'flex';
+        }
+
+        // 1. CEREBRO
+        function update() {
+            if (gameState !== 'GAME') return;
+
+            if (hero.shootFrames > 0) hero.shootFrames--;
+            if (laserCooldown > 0) laserCooldown--;
+            if (coldCooldown > 0) coldCooldown--;
+            if (auraFrames > 0) auraFrames--;
+            if (switchCooldown > 0) switchCooldown--;
+            if (kryptoCooldown > 0) kryptoCooldown--;
+            if (screenShake > 0) screenShake--;
+            if (coinFlash > 0) coinFlash--;
+            if (kryptoWhistleFlash > 0) kryptoWhistleFlash--;
+            
+            for (let i = popupTexts.length - 1; i >= 0; i--) {
+                popupTexts[i].life--;
+                popupTexts[i].yOffset -= 0.5; // Efecto de flotación hacia arriba
+                if (popupTexts[i].life <= 0) popupTexts.splice(i, 1);
+            }
+
+            // Físicas 2D y Scroll Omnidireccional
+            bgMoving = false;
+            let maxRight = canvas.width - hero.width;
+            let maxBottom = canvas.height - hero.height;
+            let margin = 5;
+            
+            // Lógica de Warp (Aceleración distorsionada al presionar contra los bordes)
+            let pushingRight = keys[keyMap.right] && (hero.x >= maxRight - margin - 2);
+            let pushingUp = keys[keyMap.up] && (hero.y <= margin + 2);
+            let pushingDown = keys[keyMap.down] && (hero.y >= maxBottom - margin - 2);
+
+            if (pushingRight || pushingUp || pushingDown) {
+                warpMultiplier = Math.min(warpMultiplier + 0.1, 4); // Sube hasta 4x
+            } else {
+                warpMultiplier = Math.max(warpMultiplier - 0.2, 1); // Vuelve a la normalidad
+            }
+            
+            let rightFactor = Math.max(0, Math.min(1, hero.x / maxRight));
+            let downFactor = Math.max(0, Math.min(1, hero.y / maxBottom));
+            let upFactor = Math.max(0, Math.min(1, 1 - (hero.y / maxBottom)));
+
+            let bgSpeedX = (1 + Math.pow(rightFactor, 4) * 20) * warpMultiplier;
+            let bgSpeedY = (1 + Math.pow(Math.max(downFactor, upFactor), 4) * 15) * warpMultiplier;
+            
+            if (bgImage.complete && bgImage.width > 0 && bgImage.height > 0) {
+                // Suavizado de inercia para el fondo
+                let targetBgSpeedX = keys[keyMap.right] ? bgSpeedX : 0;
+                // Al ir a la izquierda, la distorsion cae rapido
+                let lerpX = keys[keyMap.left] ? 0.20 : 0.05;
+                currentBgSpeedX += (targetBgSpeedX - currentBgSpeedX) * lerpX;
+                
+                let targetBgSpeedY = 0;
+                if (keys[keyMap.down]) targetBgSpeedY = bgSpeedY;
+                else if (keys[keyMap.up]) targetBgSpeedY = -bgSpeedY;
+                currentBgSpeedY += (targetBgSpeedY - currentBgSpeedY) * 0.05;
+
+                if (Math.abs(currentBgSpeedX) > 0.5) {
+                    bgMoving = true;
+                    let stretchedWidth = bgImage.width + (Math.abs(currentBgSpeedX) * 10);
+                    bgX -= currentBgSpeedX;
+                    while (bgX <= -stretchedWidth) bgX += stretchedWidth;
+                }
+                
+                if (Math.abs(currentBgSpeedY) > 0.5) {
+                    bgMoving = true;
+                    let stretchedHeight = bgImage.height + (Math.abs(currentBgSpeedY) * 5);
+                    bgY -= currentBgSpeedY;
+                    if (currentBgSpeedY > 0) {
+                        while (bgY <= -stretchedHeight) bgY += stretchedHeight;
+                    } else {
+                        while (bgY > 0) bgY -= stretchedHeight;
+                    }
+                }
+            }
+            
+            // Movimiento del héroe (Inercia y Aceleración)
+            if (keys[keyMap.right]) hero.facing = 1;
+            else if (keys[keyMap.left]) hero.facing = -1;
+
+            if (keys[keyMap.left]) hero.vx -= hero.speed;
+            if (keys[keyMap.right]) hero.vx += hero.speed;
+            if (keys[keyMap.up]) hero.vy -= hero.speed;
+            if (keys[keyMap.down]) hero.vy += hero.speed;
+
+            // Fricción
+            hero.vx *= 0.85;
+            hero.vy *= 0.85;
+
+            // Freno Asintótico Progresivo (Treadmill de repulsión desde la mitad)
+            // Imposible acercarse a menos de 5px del borde
+            let centerX = canvas.width / 2;
+            let centerY = canvas.height / 2;
+            let heroCenterX = hero.x + hero.width / 2;
+            let heroCenterY = hero.y + hero.height / 2;
+
+            // Repulsion en X: solo por la derecha (izquierda = bloqueo duro)
+            if (heroCenterX > centerX) { // Mitad derecha
+                let dist = heroCenterX - centerX;
+                let maxDist = centerX - hero.width/2 - margin;
+                let factor = Math.max(0, Math.min(1, dist / maxDist));
+                if (hero.vx > 0) hero.vx *= (1 - Math.pow(factor, 2)); // Frena hacia la derecha
+            }
+            // Izquierda: sin repulsion, el hard clamp de abajo la bloquea directamente
+
+            // Repulsión en Y
+            if (heroCenterY > centerY) { // Mitad abajo
+                let dist = heroCenterY - centerY;
+                let maxDist = centerY - hero.height/2 - margin;
+                let factor = Math.max(0, Math.min(1, dist / maxDist));
+                if (hero.vy > 0) hero.vy *= (1 - Math.pow(factor, 2));
+            } else { // Mitad arriba
+                let dist = centerY - heroCenterY;
+                let maxDist = centerY - hero.height/2 - margin;
+                let factor = Math.max(0, Math.min(1, dist / maxDist));
+                if (hero.vy < 0) hero.vy *= (1 - Math.pow(factor, 2));
+            }
+
+            hero.x += hero.vx;
+            hero.y += hero.vy;
+
+            // Hard clamp de seguridad absoluta
+            if (hero.x < margin) { hero.x = margin; hero.vx = 0; }
+            if (hero.x > canvas.width - hero.width - margin) { hero.x = canvas.width - hero.width - margin; hero.vx = 0; }
+            if (hero.y < margin) { hero.y = margin; hero.vy = 0; }
+            if (hero.y > canvas.height - hero.height - margin) { hero.y = canvas.height - hero.height - margin; hero.vy = 0; }
+
+            // --- ESTELA FANTASMA (afterimage) ---
+            const speed = Math.sqrt(hero.vx * hero.vx + hero.vy * hero.vy);
+            if (speed > 1.5) {
+                heroTrail.unshift({ x: hero.x, y: hero.y, facing: hero.facing, img: imgFly, opacity: 0.35 });
+                if (heroTrail.length > 5) heroTrail.pop();
+            } else {
+                if (heroTrail.length > 0) heroTrail.pop();
+            }
+            // Desvanecer la estela
+            for (let t of heroTrail) t.opacity *= 0.75;
+
+            // --- PARTÍCULAS DE CAPA ---
+            if (speed > 1.2) {
+                const angle = Math.atan2(hero.vy, hero.vx) + Math.PI; // dirección opuesta al movimiento
+                const spread = 0.6;
+                for (let k = 0; k < 2; k++) {
+                    const a = angle + (Math.random() - 0.5) * spread;
+                    capeParticles.push({
+                        x: hero.x + hero.width * 0.5 + (hero.facing === -1 ? hero.width * 0.3 : -hero.width * 0.1),
+                        y: hero.y + hero.height * 0.55,
+                        vx: Math.cos(a) * (Math.random() * 2 + 1),
+                        vy: Math.sin(a) * (Math.random() * 2 + 1),
+                        life: 1.0,
+                        color: Math.random() > 0.5 ? '#ff3333' : '#3399ff'
+                    });
+                }
+            }
+            for (let i = capeParticles.length - 1; i >= 0; i--) {
+                capeParticles[i].x += capeParticles[i].vx;
+                capeParticles[i].y += capeParticles[i].vy;
+                capeParticles[i].life -= 0.08;
+                if (capeParticles[i].life <= 0) capeParticles.splice(i, 1);
+            }
+            for (let i = kryptoParticles.length - 1; i >= 0; i--) {
+                kryptoParticles[i].x += kryptoParticles[i].vx;
+                kryptoParticles[i].y += kryptoParticles[i].vy;
+                kryptoParticles[i].life -= 0.09;
+                if (kryptoParticles[i].life <= 0) kryptoParticles.splice(i, 1);
+            }
+            // Proyectiles: vida y crecimiento del cono de vision termica
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.life--;
+                // El cono crece rapidamente en los primeros frames
+                if (p.length < p.maxLength) {
+                    p.length = Math.min(p.maxLength, p.length + p.maxLength / 10);
+                }
+                // Colision cono-moneda
+                for (let j = coins.length - 1; j >= 0; j--) {
+                    const c = coins[j];
+                    const coinCX = c.x + c.size / 2;
+                    const coinCY = c.y + c.size / 2;
+                    const beamX0 = p.dir === 1 ? p.originX : p.originX - p.length;
+                    const beamX1 = p.dir === 1 ? p.originX + p.length : p.originX;
+                    const distAlongBeam = Math.abs(coinCX - p.originX);
+                    const halfH = 3 + (distAlongBeam / p.maxLength) * 12; // cono que se ensancha
+                    if (coinCX > beamX0 && coinCX < beamX1 && Math.abs(coinCY - p.originY) < halfH) {
+                        if (p.type === 'cold' && !c.frozen) {
+                            c.frozen = true;
+                            c.speed = 0; // Se detiene su avance propio
+                            // Efecto de bloque de hielo
+                            c.element.style.filter = 'sepia(1) hue-rotate(180deg) saturate(3) brightness(1.2)';
+                            c.element.style.boxShadow = '0 0 10px #88ccff, inset 0 0 15px #ffffff';
+                            c.element.style.backgroundColor = 'rgba(150, 220, 255, 0.6)';
+                            c.element.style.borderRadius = '4px';
+                            c.element.style.outline = '2px solid rgba(255,255,255,0.7)';
+                            
+                            const coldSound = document.getElementById('coldAudio');
+                            if (coldSound) {
+                                coldSound.currentTime = 0;
+                                coldSound.play().catch(() => {});
+                            }
+                        } else if (p.type === 'laser') {
+                            // Explosion de moneda
+                            for (let k = 0; k < 10; k++) {
+                                const ang = Math.random() * Math.PI * 2;
+                                coinDebris.push({
+                                    x: coinCX, y: coinCY,
+                                    vx: Math.cos(ang) * (Math.random() * 3 + 1),
+                                    vy: Math.sin(ang) * (Math.random() * 3 + 1),
+                                    life: 1.0,
+                                    color: Math.random() > 0.4 ? '#ffcc00' : '#ff6600'
+                                });
+                            }
+                            score += 100;
+                            popupTexts.push({ text: "+100 KARA", color: '#00ccff', yOffset: 0, life: 60 });
+                            coinFlash = 8;
+                            c.element.remove();
+                            coins.splice(j, 1);
+                        }
+                    }
+                }
+                if (p.life <= 0) projectiles.splice(i, 1);
+            }
+
+            // Generar monedas en slots uniformes sin solapamiento
+            const COIN_SLOTS = 6;
+            const slotH = (canvas.height - 40) / COIN_SLOTS;
+            if (Math.random() < 0.02) {
+                // Elegir un slot aleatorio y comprobar que no hay moneda cerca
+                const slot = Math.floor(Math.random() * COIN_SLOTS);
+                const slotY = 20 + slot * slotH + slotH / 2;
+                const minDist = 30; // distancia minima entre monedas en Y
+                const tooClose = coins.some(c => Math.abs(c.y - slotY) < minDist && c.x > canvas.width - 40);
+                if (!tooClose) {
+                    let c = {
+                        x: canvas.width + 20,
+                        y: slotY,
+                        size: 20,
+                        speed: 2, // velocidad constante
+                        element: document.createElement('img')
+                    };
+                    c.element.src = 'media/coin.gif';
+                    c.element.style.position = 'absolute';
+                    c.element.style.width = (c.size * 2) + 'px';
+                    c.element.style.height = (c.size * 2) + 'px';
+                    c.element.style.imageRendering = 'pixelated';
+                    document.getElementById('coins-container').appendChild(c.element);
+                    coins.push(c);
+                }
+            }
+
+            // Actualizar monedas
+            for (let i = coins.length - 1; i >= 0; i--) {
+                let c = coins[i];
+                // Moneda: movimiento propio + scroll del fondo completo (espacio mundo)
+                c.x -= c.speed + currentBgSpeedX;
+                c.y -= currentBgSpeedY; // scroll vertical igual que el fondo para que no sigan al jugador
+                
+                // Actualizar posición en el DOM
+                c.element.style.left = (c.x * 2) + 'px';
+                c.element.style.top = (c.y * 2) + 'px';
+                
+                // Chequear colisión con el héroe
+                if (
+                    hero.x < c.x + c.size &&
+                    hero.x + hero.width > c.x &&
+                    hero.y < c.y + c.size &&
+                    hero.y + hero.height > c.y
+                ) {
+                    coinAudio.currentTime = 0;
+                    coinAudio.play().catch(e => console.log(e));
+                    score += 100;
+                    popupTexts.push({ text: "+100 KARA", color: '#00ccff', yOffset: 0, life: 60 });
+                    coinFlash = 8; // Flash amarillo al recoger
+                    spawnCoinPickup(c.x + c.size / 2, c.y + c.size / 2);
+                    c.element.remove();
+                    coins.splice(i, 1);
+                    continue;
+                }
+
+                // Eliminar si sale de la pantalla (por cualquier borde)
+                if (c.x < -c.size || c.y < -c.size * 2 || c.y > canvas.height + c.size) {
+                    c.element.remove();
+                    coins.splice(i, 1);
+                }
+            }
+
+            // Debris de monedas destruidas
+            for (let i = coinDebris.length - 1; i >= 0; i--) {
+                coinDebris[i].x += coinDebris[i].vx;
+                coinDebris[i].y += coinDebris[i].vy;
+                coinDebris[i].vy += 0.15; // gravedad leve
+                coinDebris[i].life -= 0.06;
+                if (coinDebris[i].life <= 0) coinDebris.splice(i, 1);
+            }
+
+            // Chispas de recoleccion hacia la heroina
+            for (let i = coinPickups.length - 1; i >= 0; i--) {
+                const p = coinPickups[i];
+                p.x += (p.tx - p.x) * 0.2 + p.vx;
+                p.y += (p.ty - p.y) * 0.2 + p.vy;
+                p.vx *= 0.8;
+                p.vy *= 0.8;
+                p.life -= 0.08;
+                if (p.life <= 0 || (Math.abs(p.tx - p.x) < 2 && Math.abs(p.ty - p.y) < 2)) {
+                    coinPickups.splice(i, 1);
+                }
+            }
+
+            // --- EFECTO DE VIENTO CÓSMICO 2D ---
+            let isMoving = keys[keyMap.up] || keys[keyMap.down] || keys[keyMap.right] || bgMoving;
+            if (isMoving) {
+                if (Math.random() < 0.6) {
+                    let vx = 0; let vy = 0;
+                    if (currentBgSpeedX > 0.5 || keys[keyMap.right]) vx = -1;
+                    if (currentBgSpeedY > 0.5 || keys[keyMap.down]) vy = -1;
+                    if (currentBgSpeedY < -0.5 || keys[keyMap.up]) vy = 1;
+
+                    let startX = Math.random() * canvas.width;
+                    let startY = Math.random() * canvas.height;
+                    
+                    // Spawnear fuera de la pantalla para que las líneas atraviesen todo
+                    if (vx === -1 && vy === 0) startX = canvas.width + 50;
+                    else if (vx === 0 && vy === -1) startY = canvas.height + 50;
+                    else if (vx === 0 && vy === 1) startY = -50;
+                    else if (vx !== 0 || vy !== 0) {
+                        // Diagonal: aleatorio entre los dos bordes relevantes
+                        if (Math.random() > 0.5) startX = canvas.width + 50;
+                        else startY = vy === 1 ? -50 : canvas.height + 50;
+                    }
+                    
+                    // Normalizar diagonal
+                    if (vx !== 0 && vy !== 0) {
+                        vx *= 0.707; vy *= 0.707;
+                    }
+
+                    const colors = ['#ffffff', '#00ffff', '#ff00ff', '#ffff00'];
+                    windLines.push({
+                        x: startX,
+                        y: startY,
+                        vx: vx,
+                        vy: vy,
+                        length: (Math.random() * 40 + 20) * warpMultiplier, // Más largo en warp
+                        speed: (Math.random() * 10 + 10) * warpMultiplier,  // Más rápido en warp
+                        opacity: Math.random() * 0.5 + 0.3,
+                        color: colors[Math.floor(Math.random() * colors.length)]
+                    });
+                }
+            }
+            
+            for (let i = windLines.length - 1; i >= 0; i--) {
+                windLines[i].x += windLines[i].vx * windLines[i].speed;
+                windLines[i].y += windLines[i].vy * windLines[i].speed;
+                
+                if (windLines[i].x < -100 || windLines[i].x > canvas.width + 100 || 
+                    windLines[i].y < -100 || windLines[i].y > canvas.height + 100) {
+                    windLines.splice(i, 1);
+                }
+            }
+
+            // --- LÓGICA DE KRYPTO ---
+            if (krypto.active) {
+                krypto.timer--;
+                if (krypto.timer <= 0) {
+                    krypto.active = false;
+                } else {
+                    const heroMoving =
+                        Math.abs(hero.vx) + Math.abs(hero.vy) > 0.3 ||
+                        keys[keyMap.up] || keys[keyMap.down] || keys[keyMap.left] || keys[keyMap.right];
+                    // Buscar moneda cercana en pantalla
+                    let target = null;
+                    let bestDist = -1;
+                    if (!heroMoving && kryptoMode === 'coins') {
+                        for (let i = 0; i < coins.length; i++) {
+                            const c = coins[i];
+                            const dx = (c.x + c.size / 2) - (krypto.x + krypto.width / 2);
+                            const dy = (c.y + c.size / 2) - (krypto.y + krypto.height / 2);
+                            const d = Math.sqrt(dx * dx + dy * dy);
+                            if (d > bestDist) {
+                                bestDist = d;
+                                target = { x: c.x + c.size / 2, y: c.y + c.size / 2 };
+                            }
+                        }
+                    }
+
+                    const followOffsetX = hero.facing === 1 ? -80 : 80;
+                    const followOffsetY = -30;
+                    const edgeStart = canvas.width - hero.width - 80;
+                    const edgeFactor = Math.max(0, Math.min(1, (hero.x - edgeStart) / 80));
+                    const edgePush = edgeFactor * 80;
+                    let targetX = hero.x + hero.width / 2 + followOffsetX - edgePush;
+                    let targetY = hero.y + hero.height / 2 + followOffsetY;
+                    let speedCap = krypto.speed;
+
+                    if (kryptoMode === 'coins' && krypto.coinsBoost > 0) {
+                        targetX = krypto.x + canvas.width * 2;
+                        targetY = krypto.y;
+                        speedCap = krypto.speed + 3.6;
+                    } else if (target) {
+                        targetX = target.x;
+                        targetY = target.y;
+                        speedCap = krypto.speed + 2.4;
+                    } else {
+                        krypto.orbitAngle += 0.03;
+                        const orbitR = 14;
+                        targetX += Math.cos(krypto.orbitAngle) * orbitR;
+                        targetY += Math.sin(krypto.orbitAngle) * orbitR;
+                        speedCap = 0.9; // casi quieto si no hay monedas
+                    }
+
+                    const returning = kryptoMode === 'follow' && krypto.returnTimerFrames > 0;
+                    if (returning) {
+                        const dx = targetX - (krypto.x + krypto.width / 2);
+                        const dy = targetY - (krypto.y + krypto.height / 2);
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        const step = (krypto.returnSpeed / 60) / METERS_PER_PIXEL;
+                        
+                        if (dist <= step) {
+                            krypto.x = targetX - krypto.width / 2;
+                            krypto.y = targetY - krypto.height / 2;
+                            krypto.returnTimerFrames = 0;
+                        } else {
+                            krypto.x += (dx / dist) * step;
+                            krypto.y += (dy / dist) * step;
+                            krypto.returnTimerFrames--;
+                        }
+                        krypto.vx = 0;
+                        krypto.vy = 0;
+                        krypto.facing = dx >= 0 ? 1 : -1;
+
+                        if (step > 0.9) {
+                            const angle = Math.atan2(dy, dx) + Math.PI;
+                            const spread = 0.7;
+                            for (let k = 0; k < 2; k++) {
+                                const a = angle + (Math.random() - 0.5) * spread;
+                                kryptoParticles.push({
+                                    x: krypto.x + krypto.width * 0.5,
+                                    y: krypto.y + krypto.height * 0.55,
+                                    vx: Math.cos(a) * (Math.random() * 2 + 0.8),
+                                    vy: Math.sin(a) * (Math.random() * 2 + 0.8),
+                                    life: 1.0,
+                                    color: Math.random() > 0.5 ? '#aaddff' : '#ffffff'
+                                });
+                            }
+                        }
+                        
+                        krypto.trail.unshift({ x: krypto.x, y: krypto.y, opacity: 0.35 });
+                        if (krypto.trail.length > 6) krypto.trail.pop();
+                        for (let t of krypto.trail) t.opacity *= 0.8;
+                    }
+                    if (!returning) {
+                    if (kryptoMode === 'coins' && krypto.coinsBoost > 0) {
+                        speedCap += 3.5;
+                        krypto.coinsBoost--;
+                    }
+                    
+                    // Recolección pasiva de Krypto estando fuera de la pantalla
+                    if (kryptoMode === 'coins' && krypto.x > canvas.width) {
+                        if (Math.random() < 0.03) { // Probabilidad para un goteo suave de puntos
+                            score += 100;
+                            popupTexts.push({ text: "+100 KRYPTO", color: '#ffcc00', yOffset: 0, life: 60 });
+                            if (coinAudio) {
+                                coinAudio.currentTime = 0;
+                                coinAudio.play().catch(e => console.log(e));
+                            }
+                            coinFlash = 5;
+                            // Soltar una chispa visual indicando desde donde nos llegan los puntos
+                            spawnCoinPickup(canvas.width, Math.max(0, Math.min(canvas.height, krypto.y + krypto.height / 2)));
+                        }
+                    }
+
+                    let dx = targetX - (krypto.x + krypto.width / 2);
+                    const dy = targetY - (krypto.y + krypto.height / 2);
+                    if (kryptoMode === 'coins') {
+                        dx = Math.max(0, dx); // solo hacia delante
+                    }
+                    krypto.vx += (dx * 0.01);
+                    krypto.vy += (dy * 0.01);
+                    krypto.vx *= 0.9;
+                    krypto.vy *= 0.9;
+
+                    const speed = Math.sqrt(krypto.vx * krypto.vx + krypto.vy * krypto.vy);
+                    if (speed > speedCap) {
+                        krypto.vx = (krypto.vx / speed) * speedCap;
+                        krypto.vy = (krypto.vy / speed) * speedCap;
+                    }
+
+                    krypto.x += krypto.vx;
+                    krypto.y += krypto.vy;
+
+                    if (kryptoMode !== 'coins') {
+                        const inView =
+                            krypto.x + krypto.width > 0 && krypto.x < canvas.width &&
+                            krypto.y + krypto.height > 0 && krypto.y < canvas.height;
+                        if (krypto.returnTimerFrames > 0 && !inView) {
+                            // Dejar que vuelva desde fuera sin teletransportar
+                        } else {
+                            krypto.x = Math.max(0, Math.min(canvas.width - krypto.width, krypto.x));
+                            krypto.y = Math.max(0, Math.min(canvas.height - krypto.height, krypto.y));
+                            if (krypto.returnTimerFrames > 0) krypto.returnTimerFrames = 0;
+                        }
+                    }
+
+                    if (kryptoMode === 'coins') {
+                        krypto.facing = 1;
+                    } else if (Math.abs(krypto.vx) > 0.2) {
+                        krypto.facing = krypto.vx >= 0 ? 1 : -1;
+                    }
+
+                    if (speed > 0.9) {
+                        const angle = Math.atan2(krypto.vy, krypto.vx) + Math.PI;
+                        const spread = 0.7;
+                        for (let k = 0; k < 2; k++) {
+                            const a = angle + (Math.random() - 0.5) * spread;
+                            kryptoParticles.push({
+                                x: krypto.x + krypto.width * 0.5,
+                                y: krypto.y + krypto.height * 0.55,
+                                vx: Math.cos(a) * (Math.random() * 2 + 0.8),
+                                vy: Math.sin(a) * (Math.random() * 2 + 0.8),
+                                life: 1.0,
+                                color: Math.random() > 0.5 ? '#aaddff' : '#ffffff'
+                            });
+                        }
+                    }
+
+                    krypto.trail.unshift({ x: krypto.x, y: krypto.y, opacity: 0.35 });
+                    if (krypto.trail.length > 6) krypto.trail.pop();
+                    for (let t of krypto.trail) t.opacity *= 0.8;
+
+                    // Krypto recolecta monedas al tocarlas
+                    for (let i = coins.length - 1; i >= 0; i--) {
+                        let c = coins[i];
+                        if (c.x < krypto.x + krypto.width && c.x + c.size > krypto.x &&
+                            c.y < krypto.y + krypto.height && c.y + c.size > krypto.y) {
+
+                            score += 100;
+                            popupTexts.push({ text: "+100 KRYPTO", color: '#ffcc00', yOffset: 0, life: 60 });
+                            if (coinAudio) {
+                                coinAudio.currentTime = 0;
+                                coinAudio.play().catch(e => console.log(e));
+                            }
+                            coinFlash = 8;
+                            spawnCoinPickup(c.x + c.size / 2, c.y + c.size / 2);
+
+                            // Efecto de rotura de la moneda
+                            for (let k = 0; k < 5; k++) {
+                                coinDebris.push({
+                                    x: c.x + c.size/2, y: c.y + c.size/2,
+                                    vx: (Math.random() - 0.5) * 6,
+                                    vy: (Math.random() - 0.5) * 6 - 2,
+                                    life: 1.0,
+                                    color: '#ffcc00'
+                                });
+                            }
+                            c.element.remove();
+                            coins.splice(i, 1);
+                        }
+                    }
+                }
+                }
+            }
+        }
+
+        // 2. PINCEL
+        function draw() {
+            if (gameState !== 'GAME' && gameState !== 'PAUSE') return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Screen shake
+            const shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 1.5 : 0;
+            const shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake * 1.5 : 0;
+            ctx.save();
+            ctx.translate(shakeX, shakeY);
+
+            // Dibujar fondo (Distorsión por velocidad 2D)
+            if (bgImage.complete && bgImage.width > 0 && bgImage.height > 0) {
+                let maxRight = canvas.width - hero.width;
+                let maxBottom = canvas.height - hero.height;
+                let rightFactor = Math.max(0, Math.min(1, hero.x / maxRight));
+                let downFactor = Math.max(0, Math.min(1, hero.y / maxBottom));
+                let upFactor = Math.max(0, Math.min(1, 1 - (hero.y / maxBottom)));
+
+                let bgSpeedX = 1 + Math.pow(rightFactor, 4) * 20;
+                let bgSpeedY = 1 + Math.pow(Math.max(downFactor, upFactor), 4) * 15;
+
+                let stretchedWidth = bgImage.width + (bgSpeedX * 10);
+                let stretchedHeight = bgImage.height + (bgSpeedY * 5);
+                
+                // Malla 2x2 para scroll infinito omnidireccional
+                ctx.drawImage(bgImage, bgX, bgY, stretchedWidth, stretchedHeight);
+                ctx.drawImage(bgImage, bgX + stretchedWidth, bgY, stretchedWidth, stretchedHeight);
+                ctx.drawImage(bgImage, bgX, bgY + stretchedHeight, stretchedWidth, stretchedHeight);
+                ctx.drawImage(bgImage, bgX + stretchedWidth, bgY + stretchedHeight, stretchedWidth, stretchedHeight);
+            }
+
+            // Dibujar viento (Viaje Cósmico Vectorial con estela fluida)
+            for (let w of windLines) {
+                let tailX = w.x - w.vx * w.length;
+                let tailY = w.y - w.vy * w.length;
+                
+                let gradient = ctx.createLinearGradient(w.x, w.y, tailX, tailY);
+                gradient.addColorStop(0, w.color || 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+                ctx.strokeStyle = gradient;
+                ctx.globalAlpha = w.opacity || 0.5;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(w.x, w.y);
+                ctx.lineTo(tailX, tailY);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1.0;
+
+            // --- VISIÓN TÉRMICA EN CONO (crece desde el ojo) ---
+            const heatPulse = 0.75 + Math.sin(Date.now() / 40) * 0.25;
+            for (let p of projectiles) {
+                if (p.length <= 0) continue;
+                const ox = p.originX;
+                const oy = p.originY;
+                const tipX = ox + p.dir * p.length;
+                const fade = p.life / p.maxLife; // fade out al final
+
+                ctx.save();
+                ctx.globalAlpha = fade;
+
+                // Gradiente desde origen (blanco-caliente) hasta punta (rojo oscuro)
+                const x0 = p.dir === 1 ? ox : tipX;
+                const x1 = p.dir === 1 ? tipX : ox;
+                const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+                grad.addColorStop(0, 'rgba(255,255,255,0.98)');
+                grad.addColorStop(0.12, 'rgba(255,220,60,0.95)');
+                grad.addColorStop(0.45, 'rgba(255,80,0,0.8)');
+                grad.addColorStop(1, 'rgba(160,0,0,0.1)');
+
+                // Forma de cono: punta estrecha en origen, ancha al final
+                const coneBaseW = p.type === 'cold' ? 24 : 16; 
+
+                if (p.type === 'laser') {
+                    // Gradiente desde origen (blanco-caliente) hasta punta (rojo oscuro)
+                    const x0 = p.dir === 1 ? ox : tipX;
+                    const x1 = p.dir === 1 ? tipX : ox;
+                    const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.98)');
+                    grad.addColorStop(0.12, 'rgba(255,220,60,0.95)');
+                    grad.addColorStop(0.45, 'rgba(255,80,0,0.8)');
+                    grad.addColorStop(1, 'rgba(160,0,0,0.1)');
+
+                    // Capa 1: glow exterior rojo difuso (cono path)
+                    ctx.shadowBlur = 25 * heatPulse;
+                    ctx.shadowColor = '#ff1100';
+                    ctx.fillStyle = `rgba(255,20,0,${0.28 * heatPulse * fade})`;
+                    ctx.beginPath();
+                    ctx.moveTo(ox, oy);
+                    ctx.lineTo(tipX, oy - coneBaseW);
+                    ctx.lineTo(tipX, oy + coneBaseW);
+                    ctx.closePath(); ctx.fill();
+
+                    // Capa 2: corona naranja
+                    ctx.shadowBlur = 14 * heatPulse;
+                    ctx.shadowColor = '#ff6600';
+                    ctx.fillStyle = `rgba(255,110,0,${0.55 * heatPulse * fade})`;
+                    ctx.beginPath();
+                    ctx.moveTo(ox, oy);
+                    ctx.lineTo(tipX, oy - coneBaseW * 0.6);
+                    ctx.lineTo(tipX, oy + coneBaseW * 0.6);
+                    ctx.closePath(); ctx.fill();
+
+                    // Capa 3: haz principal con gradiente (linea gruesa)
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#ffaa00';
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(tipX, oy); ctx.stroke();
+
+                    // Capa 4: nucleo blanco-caliente 1px
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = '#ffffff';
+                    ctx.strokeStyle = `rgba(255,255,255,${0.9 * heatPulse})`;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(tipX, oy); ctx.stroke();
+
+                    // Punto de calor en el ojo (origen)
+                    const eyeR = 4 + heatPulse * 2;
+                    const eyeGrd = ctx.createRadialGradient(ox, oy, 0, ox, oy, eyeR * 2.5);
+                    eyeGrd.addColorStop(0, 'rgba(255,255,255,1)');
+                    eyeGrd.addColorStop(0.3, 'rgba(255,220,50,0.9)');
+                    eyeGrd.addColorStop(0.7, 'rgba(255,50,0,0.5)');
+                    eyeGrd.addColorStop(1, 'rgba(255,0,0,0)');
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = eyeGrd;
+                    ctx.beginPath(); ctx.arc(ox, oy, eyeR * 2.5, 0, Math.PI * 2); ctx.fill();
+                } else if (p.type === 'cold') {
+                    // Aliento gelido
+                    const x0 = p.dir === 1 ? ox : tipX;
+                    const x1 = p.dir === 1 ? tipX : ox;
+                    const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+                    grad.addColorStop(0, 'rgba(200,240,255,0.95)');
+                    grad.addColorStop(0.3, 'rgba(100,200,255,0.8)');
+                    grad.addColorStop(0.7, 'rgba(50,150,255,0.5)');
+                    grad.addColorStop(1, 'rgba(0,100,255,0.0)');
+
+                    // Capa 1: Nube gelida
+                    ctx.shadowBlur = 30 * heatPulse;
+                    ctx.shadowColor = '#88ccff';
+                    ctx.fillStyle = `rgba(150, 220, 255, ${0.4 * heatPulse * fade})`;
+                    ctx.beginPath();
+                    ctx.moveTo(ox, oy);
+                    ctx.lineTo(tipX, oy - coneBaseW);
+                    ctx.lineTo(tipX, oy + coneBaseW);
+                    ctx.closePath(); ctx.fill();
+
+                    // Capa 2: Viento interior
+                    ctx.shadowBlur = 10 * heatPulse;
+                    ctx.shadowColor = '#ffffff';
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.moveTo(ox, oy);
+                    ctx.lineTo(tipX, oy - coneBaseW * 0.5);
+                    ctx.lineTo(tipX, oy + coneBaseW * 0.5);
+                    ctx.closePath(); ctx.fill();
+                    
+                    // Capa 3: Lineas de ventisca (pequeñas rayas blancas)
+                    ctx.shadowBlur = 5;
+                    ctx.strokeStyle = `rgba(255,255,255,${0.8 * fade})`;
+                    ctx.lineWidth = 1;
+                    for(let l = 0; l < 5; l++) {
+                        let lx = ox + p.dir * (Math.random() * p.length);
+                        let ly = oy + (Math.random() - 0.5) * (coneBaseW * 1.5) * (Math.abs(lx - ox) / Math.max(1, p.length));
+                        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + p.dir * 20, ly); ctx.stroke();
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            // --- ESTELA FANTASMA (afterimage) ---
+            for (let i = heroTrail.length - 1; i >= 0; i--) {
+                const t = heroTrail[i];
+                ctx.save();
+                ctx.globalAlpha = t.opacity * (1 - i / heroTrail.length) * 0.5;
+                ctx.translate(t.x + hero.width / 2, t.y + hero.height / 2);
+                ctx.scale(t.facing, 1);
+                if (t.img.complete) ctx.drawImage(t.img, -hero.width / 2, -hero.height / 2, hero.width, hero.height);
+                ctx.restore();
+            }
+
+            // --- PARTÍCULAS DE CAPA ---
+            for (let p of capeParticles) {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = p.color;
+                const size = p.life * 3 + 1;
+                ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+            }
+            // --- DEBRIS DE MONEDAS ---
+            for (let d of coinDebris) {
+                ctx.globalAlpha = d.life;
+                ctx.fillStyle = d.color;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#ffaa00';
+                const sz = d.life * 4 + 1;
+                ctx.fillRect(d.x - sz / 2, d.y - sz / 2, sz, sz);
+            }
+            for (let p of kryptoParticles) {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = '#88ccff';
+                const size = p.life * 3 + 1;
+                ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+            }
+            // --- CHISPAS DE RECOLECCION ---
+            for (let p of coinPickups) {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = '#ffee66';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ffdd55';
+                ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+            }
+            ctx.globalAlpha = 1.0;
+            ctx.shadowBlur = 0;
+
+            // Dibujar héroe
+            ctx.save();
+            const bobbing = Math.sin(Date.now() / 200) * 3;
+            const speed2 = Math.sqrt(hero.vx * hero.vx + hero.vy * hero.vy);
+            const isInputActive = keys[keyMap.up] || keys[keyMap.down] || keys[keyMap.left] || keys[keyMap.right];
+
+            // --- DIBUJAR KRYPTO ---
+            if (krypto.active) {
+                for (let i = krypto.trail.length - 1; i >= 0; i--) {
+                    const t = krypto.trail[i];
+                    ctx.save();
+                    ctx.globalAlpha = t.opacity * (1 - i / krypto.trail.length) * 0.6;
+                    ctx.translate(t.x + krypto.width / 2, t.y + krypto.height / 2);
+                    ctx.fillStyle = '#99ddff';
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#66ccff';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, krypto.width * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                ctx.save();
+                ctx.translate(krypto.x + krypto.width / 2, krypto.y + krypto.height / 2 + Math.sin(Date.now() / 140) * 4);
+                if (krypto.facing < 0) {
+                    ctx.scale(-1, 1); // Mirar en la direccion correcta
+                }
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#99ccff';
+                if (imgKrypto.complete && imgKrypto.naturalWidth > 0) {
+                    ctx.drawImage(imgKrypto, -krypto.width / 2, -krypto.height / 2, krypto.width, krypto.height);
+                } else {
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.fillRect(-krypto.width / 2, -krypto.height / 2, krypto.width, krypto.height);
+                }
+                ctx.restore();
+            }
+
+            // Aura de velocidad
+            if (speed2 > 1.0 || isInputActive) {
+                const auraR = hero.width * 0.6 + speed2 * 3;
+                const pulse = 0.15 + Math.sin(Date.now() / 100) * 0.08;
+                const grd = ctx.createRadialGradient(
+                    hero.x + hero.width / 2, hero.y + hero.height / 2, 0,
+                    hero.x + hero.width / 2, hero.y + hero.height / 2, auraR
+                );
+                grd.addColorStop(0, `rgba(100, 180, 255, ${pulse})`);
+                grd.addColorStop(0.5, `rgba(255, 220, 60, ${pulse * 0.4})`);
+                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.ellipse(hero.x + hero.width / 2, hero.y + hero.height / 2 + bobbing, auraR, auraR * 0.7, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Aura suave de Krypto
+            if (krypto.active) {
+                const auraR = krypto.width * 0.7;
+                const pulse = 0.12 + Math.sin(Date.now() / 120) * 0.06;
+                const grd = ctx.createRadialGradient(
+                    krypto.x + krypto.width / 2, krypto.y + krypto.height / 2, 0,
+                    krypto.x + krypto.width / 2, krypto.y + krypto.height / 2, auraR
+                );
+                grd.addColorStop(0, `rgba(120, 200, 255, ${pulse})`);
+                grd.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.arc(krypto.x + krypto.width / 2, krypto.y + krypto.height / 2, auraR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Aura de selección de habilidad
+            if (auraFrames > 0) {
+                const selAuraR = hero.width * 0.7;
+                const alpha = (auraFrames / 30) * 0.6;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = auraColor;
+                ctx.fillStyle = auraColor; 
+                ctx.beginPath();
+                ctx.arc(hero.x + hero.width / 2, hero.y + hero.height / 2 + bobbing, selAuraR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            ctx.translate(hero.x + hero.width / 2, hero.y + hero.height / 2 + bobbing);
+
+            const movingH = keys[keyMap.left] || keys[keyMap.right];
+            const movingV = keys[keyMap.up] || keys[keyMap.down];
+
+            let imgToDraw = imgIdle;
+            let flipV = false;
+
+            if (hero.shootFrames > 0) {
+                imgToDraw = imgShoot;
+            } else if (movingH && !movingV) {
+                // Horizontal puro: fly.png (sin invertir)
+                imgToDraw = imgFly;
+            }
+
+            // Volteo horizontal (facing) + vertical si aplica
+            ctx.scale(hero.facing, flipV ? -1 : 1);
+
+            if (imgToDraw.complete) {
+                ctx.drawImage(imgToDraw, -hero.width / 2, -hero.height / 2, hero.width, hero.height);
+            } else {
+                ctx.fillStyle = '#ff2a2a';
+                ctx.fillRect(-hero.width / 2, -hero.height / 2, hero.width, hero.height);
+            }
+            ctx.restore();
+
+            // Flash al recoger moneda
+            if (coinFlash > 0) {
+                ctx.globalAlpha = coinFlash / 8 * 0.4;
+                ctx.fillStyle = '#ffff00';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Restore del screen shake
+            ctx.restore();
+
+            // --- HUD CANVAS (Por encima del CRT) ---
+            const hudCanvas = document.getElementById('hudCanvas');
+            const hudCtx = hudCanvas.getContext('2d');
+            hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+
+            // Dibujar SCORE
+            hudCtx.fillStyle = 'white';
+            hudCtx.font = '16px "Courier New"';
+            let scoreStr = score.toString().padStart(4, '0');
+            hudCtx.fillText('SCORE: ' + scoreStr, 10, 20);
+            
+            // Textos flotantes de Krypto debajo del score
+            let popupBaseY = 50;
+            for (let p of popupTexts) {
+                hudCtx.save();
+                hudCtx.globalAlpha = Math.max(0, p.life / 60);
+                hudCtx.fillStyle = p.color || '#ffcc00';
+                hudCtx.font = 'bold 14px "Courier New"';
+                hudCtx.shadowBlur = 4;
+                hudCtx.shadowColor = '#000';
+                hudCtx.fillText(p.text, 10, popupBaseY + p.yOffset);
+                hudCtx.restore();
+                popupBaseY += 16; // Para no solapar textos si llegan en ráfagas muy seguidas
+            }
+
+            if (krypto.active && (kryptoMode === 'coins' || krypto.returnTimerFrames > 0)) {
+                const kx = krypto.x + krypto.width / 2;
+                const ky = krypto.y + krypto.height / 2;
+                const offscreen = kx < 0 || kx > canvas.width || ky < 0 || ky > canvas.height;
+                if (offscreen) {
+                    const cx = canvas.width / 2;
+                    const cy = canvas.height / 2;
+                    const ang = Math.atan2(ky - cy, kx - cx);
+                    const edge = Math.min(canvas.width, canvas.height) / 2 - 8;
+                    const ax = cx + Math.cos(ang) * edge;
+                    const ay = cy + Math.sin(ang) * edge;
+                    const dx = kx - (hero.x + hero.width / 2);
+                    const dy = ky - (hero.y + hero.height / 2);
+                    const dist = Math.max(0, Math.round(Math.sqrt(dx * dx + dy * dy) * METERS_PER_PIXEL));
+                    hudCtx.save();
+                    hudCtx.translate(ax, ay);
+                    hudCtx.rotate(ang);
+                    hudCtx.fillStyle = '#ffdd55';
+                    hudCtx.shadowBlur = 8;
+                    hudCtx.shadowColor = '#ffcc00';
+                    hudCtx.beginPath();
+                    hudCtx.moveTo(10, 0);
+                    hudCtx.lineTo(-6, 6);
+                    hudCtx.lineTo(-4, 0);
+                    hudCtx.lineTo(-6, -6);
+                    hudCtx.closePath();
+                    hudCtx.fill();
+                    hudCtx.restore();
+
+                    hudCtx.save();
+                    hudCtx.fillStyle = '#ffdd55';
+                    hudCtx.font = '12px "Courier New"';
+                    hudCtx.textAlign = 'center';
+                    hudCtx.textBaseline = 'top';
+                    hudCtx.fillText(dist + ' m', ax, ay + 10);
+                    hudCtx.restore();
+                }
+            }
+
+            // Actualizar cooldown de cambio de habilidad en los botones selectores
+            const btnLaser = document.getElementById('btnAbilityLaser');
+            const btnCold = document.getElementById('btnAbilityCold');
+            const btnKrypto = document.getElementById('btnAbilityKrypto');
+            if (btnLaser && btnCold && btnKrypto) {
+                const percS = switchMaxCooldown > 0 ? (switchCooldown / switchMaxCooldown) : 0;
+                const percL = laserMaxCooldown > 0 ? (laserCooldown / laserMaxCooldown) : 0;
+                const percC = coldMaxCooldown > 0 ? (coldCooldown / coldMaxCooldown) : 0;
+                const percK = kryptoMaxCooldown > 0 ? (kryptoCooldown / kryptoMaxCooldown) : 0;
+
+                const overlaySwitch = (p) => `conic-gradient(rgba(0,0,0,0.7) ${p * 100}%, transparent ${p * 100}%)`;
+                const overlayAttack = (p) => `conic-gradient(rgba(0,0,0,0.45) ${p * 100}%, transparent ${p * 100}%)`;
+
+                const laserLayers = [];
+                const coldLayers = [];
+                if (activeAbility !== 'laser' && percS > 0) laserLayers.push(overlaySwitch(percS));
+                if (percL > 0) laserLayers.push(overlayAttack(percL));
+                if (activeAbility !== 'cold' && percS > 0) coldLayers.push(overlaySwitch(percS));
+                if (percC > 0) coldLayers.push(overlayAttack(percC));
+
+                laserLayers.push("url('media/fireIcon.png')");
+                coldLayers.push("url('media/coldIcon.png')");
+
+                btnLaser.style.backgroundImage = laserLayers.join(', ');
+                btnCold.style.backgroundImage = coldLayers.join(', ');
+
+                btnKrypto.style.backgroundImage = (percK > 0)
+                    ? `${overlayAttack(percK)}, url('media/kryptoIcon.png')`
+                    : "url('media/kryptoIcon.png')";
+            }
+
+            if (kryptoWhistleFlash > 0) {
+                if (btnKrypto) btnKrypto.style.filter = 'drop-shadow(0 0 10px #ffffff)';
+            } else if (btnKrypto) {
+                btnKrypto.style.filter = '';
+            }
+
+        }
+
+        // 3. MOTOR
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        gameLoop();
+
+        // --- ENTRADA DE TECLADO GLOBAL ---
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+
+            // Iniciar la música en la primera interacción
+            if (!musicStarted && bgMusic.src) {
+                bgMusic.volume = sliderVolume.value / 100;
+                bgMusic.play().catch(err => console.log('Autoplay prevent:', err));
+                musicStarted = true;
+            }
+
+            // Bloquear teclas usadas como controles del juego para no hacer scroll etc.
+            const allMappedCodes = Object.values(keyMap);
+            if (allMappedCodes.includes(e.code) && gameState === 'GAME') {
+                e.preventDefault();
+            }
+
+            if (gameState === 'MENU') {
+                if (e.code === 'ArrowDown') {
+                    mainSelectedIndex = (mainSelectedIndex + 1) % mainMenuItems.length;
+                    updateMainMenuSelection();
+                } else if (e.code === 'ArrowUp') {
+                    mainSelectedIndex = (mainSelectedIndex - 1 + mainMenuItems.length) % mainMenuItems.length;
+                    updateMainMenuSelection();
+                } else if (e.code === 'KeyZ') {
+                    const selectedItem = mainMenuItems[mainSelectedIndex];
+                    if (selectedItem.id === 'btnJugar') {
+                        startGame();
+                    } else if (selectedItem.id === 'btnOpciones') {
+                        gameState = 'OPTIONS';
+                        panelOpciones.style.display = 'block';
+                        document.body.classList.add('show-cursor');
+                        document.getElementById('btnCerrarOpciones').classList.add('selected');
+                    } else if (selectedItem.id === 'btnCreditos') {
+                        gameState = 'CREDITS';
+                        panelCreditos.style.display = 'block';
+                        document.body.classList.add('show-cursor');
+                    } else if (selectedItem.id === 'btnSupergirl') {
+                        window.open("https://www.imdb.com/title/tt8814476/", "_blank");
+                    }
+                }
+            } 
+            else if (gameState === 'OPTIONS') {
+                if (e.code === 'KeyX' || e.code === 'KeyZ' || e.code === 'Escape') {
+                    const prev = window.previousGameState || 'MENU';
+                    window.previousGameState = null;
+                    gameState = prev;
+                    panelOpciones.style.display = 'none';
+                    document.body.classList.remove('show-cursor');
+                    document.getElementById('btnCerrarOpciones').classList.remove('selected');
+                    // Si volvemos de pausa, mostrar el menú de pausa de nuevo
+                    if (prev === 'PAUSE') {
+                        pauseMenu.style.display = 'flex';
+                    }
+                } else if (e.code === 'ArrowRight') {
+                    sliderVolume.value = Math.min(100, parseInt(sliderVolume.value) + 5);
+                    bgMusic.volume = sliderVolume.value / 100;
+                } else if (e.code === 'ArrowLeft') {
+                    sliderVolume.value = Math.max(0, parseInt(sliderVolume.value) - 5);
+                    bgMusic.volume = sliderVolume.value / 100;
+                }
+            }
+            else if (gameState === 'CREDITS') {
+                if (e.code === 'KeyX' || e.code === 'KeyZ' || e.code === 'Escape') {
+                    gameState = 'MENU';
+                    panelCreditos.style.display = 'none';
+                    document.body.classList.remove('show-cursor');
+                }
+            }
+            else if (gameState === 'GAME') {
+                if (e.code === keyMap.pause) {
+                    gameState = 'PAUSE';
+                    pauseSelectedIndex = 0;
+                    updatePauseMenuSelection();
+                    pauseMenu.style.display = 'flex';
+                } else if (e.code === keyMap.whistle) {
+                    toggleKryptoMode();
+                } else if (e.code === keyMap.shoot) {
+                    const isMoving = keys[keyMap.up] || keys[keyMap.down] || keys[keyMap.left] || keys[keyMap.right];
+                    
+                    if (activeAbility === 'laser' && laserCooldown === 0 && coldCooldown === 0 && !isMoving) {
+                        hero.shootFrames = 20;
+                        screenShake = 5;
+                        const bobbing = Math.sin(Date.now() / 200) * 3;
+                        const eyeX = hero.facing === 1 ? hero.x + hero.width * 0.72 : hero.x + hero.width * 0.28;
+                        const eyeY = hero.y + hero.height * 0.20 + bobbing;
+                        projectiles.push({
+                            type: 'laser', originX: eyeX, originY: eyeY, dir: hero.facing,
+                            length: 0, maxLength: hero.facing === 1 ? canvas.width - eyeX + 10 : eyeX + 10,
+                            life: 40, maxLife: 40
+                        });
+                        const shootAudio = document.getElementById('shootAudio');
+                        if (shootAudio) { shootAudio.currentTime = 0; shootAudio.play().catch(() => {}); }
+                        laserCooldown = laserMaxCooldown;
+                    } else if (activeAbility === 'cold' && coldCooldown === 0 && laserCooldown === 0 && !isMoving) {
+                        hero.shootFrames = 20;
+                        screenShake = 2; // Menos temblor al soplar
+                        const bobbing = Math.sin(Date.now() / 200) * 3;
+                        const mouthX = hero.facing === 1 ? hero.x + hero.width * 0.72 : hero.x + hero.width * 0.28;
+                        const mouthY = hero.y + hero.height * 0.23 + bobbing;
+                        projectiles.push({
+                            type: 'cold', originX: mouthX, originY: mouthY, dir: hero.facing,
+                            length: 0, maxLength: hero.facing === 1 ? canvas.width - mouthX + 10 : mouthX + 10,
+                            life: 40, maxLife: 40
+                        });
+                        const coldSound = document.getElementById('coldAudio');
+                        if (coldSound) { coldSound.currentTime = 0; coldSound.play().catch(() => {}); }
+                        coldCooldown = coldMaxCooldown;
+                    }
+                }
+            }
+            else if (gameState === 'PAUSE') {
+                if (e.code === keyMap.pause) {
+                    // Unpause
+                    gameState = 'GAME';
+                    pauseMenu.style.display = 'none';
+                } else if (e.code === 'ArrowDown') {
+                    pauseSelectedIndex = (pauseSelectedIndex + 1) % pauseMenuItems.length;
+                    updatePauseMenuSelection();
+                } else if (e.code === 'ArrowUp') {
+                    pauseSelectedIndex = (pauseSelectedIndex - 1 + pauseMenuItems.length) % pauseMenuItems.length;
+                    updatePauseMenuSelection();
+                } else if (e.code === keyMap.shoot) {
+                    const action = pauseMenuItems[pauseSelectedIndex].id;
+                    if (action === 'btnContinuar') {
+                        gameState = 'GAME';
+                        pauseMenu.style.display = 'none';
+                    } else if (action === 'btnOpcionesPausa') {
+                        window.previousGameState = 'PAUSE'; 
+                        pauseMenu.style.display = 'none'; // ocultar pausa mientras options está abierto
+                        gameState = 'OPTIONS';
+                        panelOpciones.style.display = 'block';
+                        document.getElementById('btnCerrarOpciones').classList.add('selected');
+                    } else if (action === 'btnVolver') {
+                        gameState = 'MENU';
+                        pauseMenu.style.display = 'none';
+                        gameContainer.style.display = 'none';
+                        menuContainer.style.display = 'flex';
+                        mainSelectedIndex = 0;
+                        updateMainMenuSelection();
+                    }
+                }
+            }
+        });
+
+        // Evento de ratón para el botón cerrar del panel de créditos
+        document.getElementById('btnCerrarCreditos').addEventListener('click', () => {
+            if (gameState === 'CREDITS') {
+                gameState = 'MENU';
+                panelCreditos.style.display = 'none';
+                document.body.classList.remove('show-cursor');
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        // Bloquear menú contextual (clic derecho) y arrastre de elementos para proteger la UI
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        window.addEventListener('dragstart', e => e.preventDefault());
+
+        // --- SISTEMA DE CONTROLES MÓVILES ESTILO ARCADE ---
+        const joystickBase = document.getElementById('joystickBase');
+        const joystickKnob = document.getElementById('joystickKnob');
+        const mobileActionBtn = document.getElementById('mobileActionBtn');
+
+        let joyActiveX = null;
+        let joyActiveY = null;
+
+        // Simulador robusto de eventos de teclado para disparar nuestra propia lógica
+        function triggerKey(type, code) {
+            if (!code) return;
+            keys[code] = (type === 'keydown'); // Garantizar estado inmediato 
+            const event = new KeyboardEvent(type, { code: code, bubbles: true });
+            Object.defineProperty(event, 'code', { value: code }); // Fallback para iOS/Android antiguos
+            window.dispatchEvent(event);
+        }
+
+        function handleJoy(e) {
+            e.preventDefault(); // Previene el scroll o zoom nativo al arrastrar
+            if (e.type === 'touchend' || e.type === 'touchcancel') {
+                joystickKnob.style.transform = `translate(-50%, -50%)`;
+                triggerKey('keyup', joyActiveX);
+                triggerKey('keyup', joyActiveY);
+                joyActiveX = null;
+                joyActiveY = null;
+                return;
+            }
+
+            const touch = e.targetTouches[0];
+            const rect = joystickBase.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            let dx = touch.clientX - centerX;
+            let dy = touch.clientY - centerY;
+            
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const maxDist = rect.width / 2;
+            
+            // Limitar la perilla visualmente dentro del joystick
+            if (distance > maxDist) {
+                dx = (dx / distance) * maxDist;
+                dy = (dy / distance) * maxDist;
+            }
+            joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+            const threshold = 25; // Zona muerta antes de detectar la tecla
+            let newX = null;
+            let newY = null;
+
+            if (dx > threshold) newX = keyMap.right;
+            else if (dx < -threshold) newX = keyMap.left;
+
+            if (dy > threshold) newY = keyMap.down;
+            else if (dy < -threshold) newY = keyMap.up;
+
+            if (newX !== joyActiveX) {
+                triggerKey('keyup', joyActiveX);
+                triggerKey('keydown', newX);
+                joyActiveX = newX;
+            }
+
+            if (newY !== joyActiveY) {
+                triggerKey('keyup', joyActiveY);
+                triggerKey('keydown', newY);
+                joyActiveY = newY;
+            }
+        }
+
+        if (joystickBase) {
+            joystickBase.addEventListener('touchstart', handleJoy, {passive: false});
+            joystickBase.addEventListener('touchmove', handleJoy, {passive: false});
+            joystickBase.addEventListener('touchend', handleJoy, {passive: false});
+            joystickBase.addEventListener('touchcancel', handleJoy, {passive: false});
+        }
+
+        if (mobileActionBtn) {
+            mobileActionBtn.addEventListener('touchstart', (e) => { e.preventDefault(); triggerKey('keydown', keyMap.shoot); }, {passive: false});
+            mobileActionBtn.addEventListener('touchend', (e) => { e.preventDefault(); triggerKey('keyup', keyMap.shoot); }, {passive: false});
+            mobileActionBtn.addEventListener('touchcancel', (e) => { e.preventDefault(); triggerKey('keyup', keyMap.shoot); }, {passive: false});
+        }
+    </script>
+</body>
+</html>
